@@ -58,9 +58,10 @@ body {
 <img id="cat" class="run" src="ps5web.png" alt="">
 <div id="test-progress" aria-live="polite">
     <div id="test-progress-title">Avan&ccedil;os dos testes</div>
-    <div id="test-progress-list"></div>
+<div id="test-progress-list"></div>
 </div>
 <script src="log.js"></script>
+<script src="p2jb/loader.js"></script>
 <script>
 "use strict";
 
@@ -294,7 +295,7 @@ let restoreObserved = false;
 let retrySafe = false;
 let retryScheduled = false;
 let attemptPersisted = false;
-let p2jbPreflightLoaded = false;
+let p2jbInfrastructurePromise = null;
 let candidateEverReturned = false;
 let candidateMutationStarted = false;
 let zeroHeaderMiss = false;
@@ -385,28 +386,31 @@ window.log = async function (message) {
     screenLine(text);
 };
 
-function loadP2jbPreflightOnce() {
-    if (p2jbPreflightLoaded)
-        return;
-    p2jbPreflightLoaded = true;
-    mark("P2JB-PREFLIGHT-LOAD", "p2jb_preflight.js");
+function loadP2jbInfrastructureOnce() {
+    if (p2jbInfrastructurePromise)
+        return p2jbInfrastructurePromise;
 
-    const script = document.createElement("script");
-    script.src = "p2jb_preflight.js";
-    script.onload = function () {
-        Promise.resolve(globalThis.p2jbPreflightPromise).then(function () {
-            stopped = true;
-            mark("P2JB-PREFLIGHT-COMPLETE", "execution-stopped-after-preflight");
-        }, function (error) {
-            stopped = true;
-            mark("P2JB-PREFLIGHT-ERROR", String(error).slice(0, 100));
+    function loadScript(src) {
+        return new Promise(function (resolve, reject) {
+            const script = document.createElement("script");
+            script.src = src;
+            script.onload = resolve;
+            script.onerror = function () {
+                reject(new Error("falha ao carregar " + src));
+            };
+            document.body.appendChild(script);
         });
-    };
-    script.onerror = function () {
+    }
+
+    const loader = window.P2JBLoader.create({ loadScript, mark });
+    p2jbInfrastructurePromise = loader.run().then(function () {
         stopped = true;
-        mark("P2JB-PREFLIGHT-LOAD-FAIL", "p2jb_preflight.js");
-    };
-    document.body.appendChild(script);
+    }, function (error) {
+        stopped = true;
+        mark("P2JB-INFRASTRUCTURE-ERROR", String(error).slice(0, 100));
+        throw error;
+    });
+    return p2jbInfrastructurePromise;
 }
 
 function screenLine(text) {
@@ -1741,7 +1745,7 @@ function reportComposition() {
         mark("P2JB-ENTRY-PASS", `arena-filled=${arenaFilledOK}`
             + "-carrier-parked-at-collator-field=true");
         mark("KQUEUEEX-PREFLIGHT-NEXT", "single-call-no-notification");
-        loadP2jbPreflightOnce();
+        loadP2jbInfrastructureOnce().catch(function () {});
         return;
     }
 
