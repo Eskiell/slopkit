@@ -286,6 +286,7 @@ let restoreObserved = false;
 let retrySafe = false;
 let retryScheduled = false;
 let attemptPersisted = false;
+let p2jbPreflightLoaded = false;
 let candidateEverReturned = false;
 let candidateMutationStarted = false;
 let zeroHeaderMiss = false;
@@ -369,6 +370,36 @@ const progressLog = window.TestProgressLog.create(
     document.getElementById("test-progress-list"),
     { maxEntries: 120 }
 );
+
+window.log = async function (message) {
+    const text = String(message);
+    progressLog.add(text, text.includes("exception:") ? "bad" : "run");
+    screenLine(text);
+};
+
+function loadP2jbPreflightOnce() {
+    if (p2jbPreflightLoaded)
+        return;
+    p2jbPreflightLoaded = true;
+    mark("P2JB-PREFLIGHT-LOAD", "p2jb_preflight.js");
+
+    const script = document.createElement("script");
+    script.src = "p2jb_preflight.js";
+    script.onload = function () {
+        Promise.resolve(globalThis.p2jbPreflightPromise).then(function () {
+            stopped = true;
+            mark("P2JB-PREFLIGHT-COMPLETE", "execution-stopped-after-preflight");
+        }, function (error) {
+            stopped = true;
+            mark("P2JB-PREFLIGHT-ERROR", String(error).slice(0, 100));
+        });
+    };
+    script.onerror = function () {
+        stopped = true;
+        mark("P2JB-PREFLIGHT-LOAD-FAIL", "p2jb_preflight.js");
+    };
+    document.body.appendChild(script);
+}
 
 function screenLine(text) {
     screenLines.push(text.length > 110 ? `${text.slice(0, 107)}...` : text);
@@ -1640,11 +1671,10 @@ function reportComposition() {
         + `-length-word=${lengthWord.keep.toString(16)}`);
     if (leakPass && notifyReady && carrierArmedForCommit
         && commitBlockConfirmed) {
-        mark("NOTIFY-PLAN-PASS", `arena-filled=${arenaFilledOK}`
+        mark("P2JB-ENTRY-PASS", `arena-filled=${arenaFilledOK}`
             + "-carrier-parked-at-collator-field=true");
-        mark("NONFATAL-NATIVE-CALL-NEXT",
-            "system-notification-via-natural-stack-no-kernel-exploit");
-        setTimeout(commitNotificationProof, 250);
+        mark("KQUEUEEX-PREFLIGHT-NEXT", "single-call-no-notification");
+        loadP2jbPreflightOnce();
         return;
     }
 
