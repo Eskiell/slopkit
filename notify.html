@@ -407,7 +407,7 @@ function loadP2jbInfrastructureOnce() {
         stopped = true;
     }, function (error) {
         stopped = true;
-        mark("P2JB-INFRASTRUCTURE-ERROR", String(error).slice(0, 100));
+        mark("P2JB-PREFLIGHT-ABORT", String(error).slice(0, 100));
         throw error;
     });
     return p2jbInfrastructurePromise;
@@ -1745,6 +1745,7 @@ function reportComposition() {
         mark("P2JB-ENTRY-PASS", `arena-filled=${arenaFilledOK}`
             + "-carrier-parked-at-collator-field=true");
         mark("KQUEUEEX-PREFLIGHT-NEXT", "single-call-no-notification");
+        stopped = true;
         loadP2jbInfrastructureOnce().catch(function () {});
         return;
     }
