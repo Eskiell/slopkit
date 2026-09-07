@@ -13,44 +13,60 @@ async function execute(context) {
     vm.runInNewContext(fs.readFileSync(scriptPath, "utf8"), context, {
         filename: scriptPath,
     });
-    await new Promise((resolve) => setImmediate(resolve));
+    return context.p2jbPreflightPromise;
 }
 
-test("executa kqueueex uma vez e registra o caminho EFAULT", async () => {
+test("valida getpid antes de chamar kqueueex uma vez", async () => {
     const calls = [];
     const logs = [];
 
-    await execute({
-        syscall(...args) {
-            calls.push(args);
-            return 14n;
+    const result = await execute({
+        syscall(number, ...args) {
+            calls.push([number, ...args]);
+            return number === 0x14n ? 321n : 14n;
         },
         async log(message) {
             logs.push(message);
         },
     });
 
-    assert.deepEqual(calls, [[0x8Dn, 0x800000000000n, 0n]]);
+    assert.deepEqual(calls, [
+        [0x14n],
+        [0x8Dn, 0x800000000000n],
+    ]);
+    assert.deepEqual({ ...result }, {
+        pid: 321n,
+        kqueueexReturn: 14n,
+        classification: "EFAULT",
+    });
     assert.deepEqual(logs, [
-        "[kqueueex-poc] iniciando chamada unica",
-        "[kqueueex-poc] ret=14 / 0xe",
-        "[kqueueex-poc] EFAULT -> leak path atingido",
-        "[kqueueex-poc] finalizado",
+        "[p2jb-preflight] iniciando",
+        "[p2jb-preflight] getpid=321",
+        "[p2jb-preflight] kqueueex ret=14 / 0xe",
+        "[p2jb-preflight] classificacao=EFAULT",
+        "[p2jb-preflight] finalizado; nenhuma etapa posterior",
     ]);
 });
 
-test("registra a pré-condição ausente sem tentar a syscall", async () => {
+test("não chama kqueueex quando getpid não é plausível", async () => {
+    const calls = [];
     const logs = [];
 
-    await execute({
+    const result = await execute({
+        syscall(number) {
+            calls.push(number);
+            return 0n;
+        },
         async log(message) {
             logs.push(message);
         },
     });
 
+    assert.deepEqual(calls, [0x14n]);
+    assert.equal(result, undefined);
     assert.deepEqual(logs, [
-        "[kqueueex-poc] iniciando chamada unica",
-        "[kqueueex-poc] exception: Error: syscall() nao disponivel",
-        "[kqueueex-poc] finalizado",
+        "[p2jb-preflight] iniciando",
+        "[p2jb-preflight] exception: Error: getpid retorno invalido: 0",
+        "[p2jb-preflight] finalizado; nenhuma etapa posterior",
     ]);
 });
